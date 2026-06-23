@@ -179,3 +179,77 @@ XACK banco.transferencias notif-group 1719148500000-0
 
 ---
 
+# Actividad adicional — auditoria-group y simulación de caída
+
+Se agrega un tercer grupo `auditoria-group` independiente que lee el mismo stream y registra cada `TransferenciaCreada`. Al ser un grupo separado, no interfiere con `fraude-group` ni `notif-group`.
+
+La simulación demuestra qué ocurre cuando un consumidor lee un evento pero **nunca envía el ACK** (crash, error de red, etc.): Redis mantiene el evento en estado pendiente y otro consumidor puede reclamarlo con `XCLAIM`.
+
+---
+
+### Paso 5 — Crear el tercer grupo de consumidores
+
+Se usa `0` como offset para leer desde el inicio del stream (los eventos ya existen):
+
+```bash
+XGROUP CREATE banco.transferencias auditoria-group 0
+```
+
+![alt text](image-9.png)
+
+---
+
+### Paso 6 — auditor-1 lee el evento y simula la caída
+
+`auditor-1` lee el evento. A continuación **no se ejecuta ningún XACK** — eso simula que el consumidor cayó antes de confirmar:
+
+```bash
+XREADGROUP GROUP auditoria-group auditor-1 COUNT 1 STREAMS banco.transferencias >
+```
+![alt text](image-10.png)
+
+> En la vida real esto ocurre cuando el proceso se cae, pierde la conexión o lanza una excepción antes de llegar al ACK. Aquí lo simulamos simplemente no ejecutando el `XACK`.
+
+---
+
+### Paso 7 — Verificar que el evento quedó pendiente
+
+```bash
+XPENDING banco.transferencias auditoria-group - + 10
+```
+![alt text](image-11.png)
+
+> Redis muestra el evento como pendiente, asignado a `auditor-1`, con el tiempo que lleva sin confirmar. El evento **no se pierde**: sigue en el stream esperando resolución.
+
+---
+
+### Paso 8 — auditor-2 reclama el evento con XCLAIM
+
+Reemplaza `<ID>` con el ID que apareció en `XPENDING`:
+
+```bash
+XCLAIM banco.transferencias auditoria-group auditor-2 0 <ID>
+```
+![alt text](image-12.png)
+
+> El `0` es el tiempo mínimo de inactividad en milisegundos. Con `0` se reclama inmediatamente. En producción se usa un valor mayor (ej. `30000`) para esperar antes de asumir que el consumidor original falló.
+
+Confirmar el procesamiento desde `auditor-2`:
+
+```bash
+XACK banco.transferencias auditoria-group <ID>
+```
+![alt text](image-13.png)
+
+---
+
+### Paso 9 — Verificar que ya no hay pendientes
+
+```bash
+XPENDING banco.transferencias auditoria-group - + 10
+```
+
+![alt text](image-14.png)
+
+> Lo devuelve vacío. El evento fue procesado exitosamente por recuperación: `auditor-2` tomó el trabajo que `auditor-1` dejó incompleto.
+
