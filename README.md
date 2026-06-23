@@ -77,7 +77,7 @@ docker run --name redis-eda -p 6379:6379 -d redis:7
 ```bash
 docker exec -it redis-eda redis-cli
 ```
-![alt text](image.png)
+![alt text](/docs/image.png)
 
 Dentro del cliente `redis-cli`, crear los grupos de consumidores:
 
@@ -91,7 +91,7 @@ XGROUP CREATE banco.transferencias notif-group $
 
 > `MKSTREAM` crea el stream automáticamente si no existe. Cada grupo tiene su propio puntero de lectura independiente.
 
-![alt text](image-1.png)
+![alt text](/docs/image-1.png)
 ---
 
 ### Paso 2 — Publicar eventos con XADD
@@ -99,7 +99,7 @@ XGROUP CREATE banco.transferencias notif-group $
 ```bash
 XADD banco.transferencias * eventType TransferenciaCreada eventId evt-1001 transferId tr-987 amount 150000 currency COP
 ```
-![alt text](image-2.png)
+![alt text](/docs/image-2.png)
 
 Ver todos los eventos publicados en el stream:
 
@@ -109,7 +109,7 @@ XRANGE banco.transferencias - +
 
 > Redis asigna un ID como `1719148500000-0` al evento. Ese ID permite recuperarlo, ordenarlo y trazarlo.
 
-![alt text](image-3.png)
+![alt text](/docs/image-3.png)
 
 ---
 
@@ -121,7 +121,7 @@ Leer el próximo evento como `consumidor-1` del grupo `fraude-group`:
 XREADGROUP GROUP fraude-group consumidor-1 COUNT 1 BLOCK 5000 STREAMS banco.transferencias >
 ```
 
-![alt text](image-4.png)
+![alt text](/docs/image-4.png)
 
 Confirmar que el evento fue procesado exitosamente (reemplaza el ID con el que devolvió Redis):
 
@@ -129,7 +129,7 @@ Confirmar que el evento fue procesado exitosamente (reemplaza el ID con el que d
 XACK banco.transferencias fraude-group 1719148500000-0
 ```
 
-![alt text](image-5.png)
+![alt text](/docs/image-5.png)
 
 Revisar eventos pendientes (no confirmados) en el grupo:
 
@@ -137,7 +137,7 @@ Revisar eventos pendientes (no confirmados) en el grupo:
 XPENDING banco.transferencias fraude-group - + 10
 ```
 
-![alt text](image-6.png)
+![alt text](/docs/image-6.png)
 
 > - `>` le indica a Redis que entregue solo eventos **nuevos** para ese grupo.  
 > - Si el consumidor cae antes del ACK, el evento queda pendiente.  
@@ -154,7 +154,7 @@ El mismo evento es visible para el grupo de notificaciones de forma independient
 XREADGROUP GROUP notif-group consumidor-notif COUNT 1 BLOCK 5000 STREAMS banco.transferencias >
 ```
 
-![alt text](image-7.png)
+![alt text](/docs/image-7.png)
 
 ```bash
 XACK banco.transferencias notif-group 1719148500000-0
@@ -162,7 +162,7 @@ XACK banco.transferencias notif-group 1719148500000-0
 
 > Ambos grupos (`fraude-group` y `notif-group`) consumen el mismo evento sin competir entre sí. Cada uno tiene su propia confirmación.
 
-![alt text](image-8.png)
+![alt text](/docs/image-8.png)
 
 ---
 
@@ -195,7 +195,7 @@ Se usa `0` como offset para leer desde el inicio del stream (los eventos ya exis
 XGROUP CREATE banco.transferencias auditoria-group 0
 ```
 
-![alt text](image-9.png)
+![alt text](/docs/image-9.png)
 
 ---
 
@@ -206,7 +206,7 @@ XGROUP CREATE banco.transferencias auditoria-group 0
 ```bash
 XREADGROUP GROUP auditoria-group auditor-1 COUNT 1 STREAMS banco.transferencias >
 ```
-![alt text](image-10.png)
+![alt text](/docs/image-10.png)
 
 > En la vida real esto ocurre cuando el proceso se cae, pierde la conexión o lanza una excepción antes de llegar al ACK. Aquí lo simulamos simplemente no ejecutando el `XACK`.
 
@@ -217,7 +217,7 @@ XREADGROUP GROUP auditoria-group auditor-1 COUNT 1 STREAMS banco.transferencias 
 ```bash
 XPENDING banco.transferencias auditoria-group - + 10
 ```
-![alt text](image-11.png)
+![alt text](/docs/image-11.png)
 
 > Redis muestra el evento como pendiente, asignado a `auditor-1`, con el tiempo que lleva sin confirmar. El evento **no se pierde**: sigue en el stream esperando resolución.
 
@@ -230,7 +230,7 @@ Reemplaza `<ID>` con el ID que apareció en `XPENDING`:
 ```bash
 XCLAIM banco.transferencias auditoria-group auditor-2 0 <ID>
 ```
-![alt text](image-12.png)
+![alt text](/docs/image-12.png)
 
 > El `0` es el tiempo mínimo de inactividad en milisegundos. Con `0` se reclama inmediatamente. En producción se usa un valor mayor (ej. `30000`) para esperar antes de asumir que el consumidor original falló.
 
@@ -239,7 +239,7 @@ Confirmar el procesamiento desde `auditor-2`:
 ```bash
 XACK banco.transferencias auditoria-group <ID>
 ```
-![alt text](image-13.png)
+![alt text](/docs/image-13.png)
 
 ---
 
@@ -249,7 +249,7 @@ XACK banco.transferencias auditoria-group <ID>
 XPENDING banco.transferencias auditoria-group - + 10
 ```
 
-![alt text](image-14.png)
+![alt text](/docs/image-14.png)
 
 > Lo devuelve vacío. El evento fue procesado exitosamente por recuperación: `auditor-2` tomó el trabajo que `auditor-1` dejó incompleto.
 
